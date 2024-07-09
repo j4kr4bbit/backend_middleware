@@ -4,3 +4,4 @@ psycopg2-binary
 neo4j
 pydantic
 sqlalchemy
+requests
