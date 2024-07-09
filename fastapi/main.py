@@ -4,6 +4,7 @@ from sqlalchemy import create_engine, Column, Integer, String
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from neo4j import GraphDatabase
+import requests
 import os
 
 
@@ -95,3 +96,23 @@ def delete_item(item_id: int):
     with neo4j_driver.session() as session:
         session.run("MATCH (a:Item {name: $name}) DELETE a", name=db_item.name)
     return {"ok": True}
+
+
+# Ollama Integration
+class OllamaRequest(BaseModel):
+    prompt: str
+
+class OllamaResponse(BaseModel):
+    response: str
+
+@app.post("/ollama/", response_model=OllamaResponse)
+def query_ollama(request: OllamaRequest):
+    ollama_url = os.getenv("OLLAMA_URL")
+    data = {
+        "prompt": request.prompt
+    }
+    response = requests.post(f"{ollama_url}/api/llama3", json=data)
+    if response.status_code != 200:
+        raise HTTPException(status_code=response.status_code, detail=response.text)
+    response_data = response.json()
+    return OllamaResponse(response=response_data.get("response"))
