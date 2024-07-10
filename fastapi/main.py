@@ -6,7 +6,7 @@ from sqlalchemy.orm import sessionmaker
 from neo4j import GraphDatabase
 import requests
 import os
-
+import json
 
 app = FastAPI()
 
@@ -98,6 +98,11 @@ def delete_item(item_id: int):
     return {"ok": True}
 
 
+
+
+
+
+
 # Ollama Integration
 class OllamaRequest(BaseModel):
     prompt: str
@@ -109,10 +114,24 @@ class OllamaResponse(BaseModel):
 def query_ollama(request: OllamaRequest):
     ollama_url = os.getenv("OLLAMA_URL")
     data = {
-        "prompt": request.prompt
+        "model": "llama3",
+        "prompt": f"{request.prompt} + please format your response in JSON.",
+        "format": "json",
+        "stream": False
     }
-    response = requests.post(f"{ollama_url}/api/llama3", json=data)
+    response = requests.post(f"{ollama_url}/api/generate", json=data)
     if response.status_code != 200:
         raise HTTPException(status_code=response.status_code, detail=response.text)
-    response_data = response.json()
-    return OllamaResponse(response=response_data.get("response"))
+    try:
+        response_data = response.json()
+    except requests.exceptions.JSONDecodeError as e:
+        raise HTTPException(status_code=500, detail="Failed to parse response from Ollama service")
+    
+    # Ensure response is properly formatted
+    try:
+        response_text = response_data.get("response", "No response key in Ollama response")
+        cleaned_response = json.dumps(json.loads(response_text), indent=4)
+    except (json.JSONDecodeError, TypeError) as e:
+        raise HTTPException(status_code=500, detail="Failed to format response from Ollama service")
+
+    return OllamaResponse(response=cleaned_response)
