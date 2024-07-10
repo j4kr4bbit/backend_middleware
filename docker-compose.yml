@@ -36,6 +36,6 @@ services:
       OLLAMA_URL: http://ollama:11434
 
   ollama:
-    image: ollama/ollama:latest
+    build: ./ollama
     ports:
       - "11434:11434"
