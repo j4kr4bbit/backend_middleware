@@ -44,30 +44,26 @@ class ItemResponse(ItemBase):
     class Config:
         orm_mode = True
 
-@app.post("/items/", response_model=ItemResponse)
-def create_item(item: ItemCreate):
+# PostgreSQL CRUD operations
+@app.post("/postgres/items/", response_model=ItemResponse)
+def create_postgres_item(item: ItemCreate):
     db = SessionLocal()
     db_item = Item(name=item.name, description=item.description)
     db.add(db_item)
     db.commit()
     db.refresh(db_item)
-
-    with neo4j_driver.session() as session:
-        session.run("CREATE (a:Item {name: $name, description: $description})", 
-                    name=item.name, description=item.description)
     return db_item
 
-@app.get("/items/{item_id}", response_model=ItemResponse)
-def read_item(item_id: int):
+@app.get("/postgres/items/{item_id}", response_model=ItemResponse)
+def read_postgres_item(item_id: int):
     db = SessionLocal()
     db_item = db.query(Item).filter(Item.id == item_id).first()
     if db_item is None:
         raise HTTPException(status_code=404, detail="Item not found")
-
     return db_item
 
-@app.put("/items/{item_id}", response_model=ItemResponse)
-def update_item(item_id: int, item: ItemCreate):
+@app.put("/postgres/items/{item_id}", response_model=ItemResponse)
+def update_postgres_item(item_id: int, item: ItemCreate):
     db = SessionLocal()
     db_item = db.query(Item).filter(Item.id == item_id).first()
     if db_item is None:
@@ -77,14 +73,10 @@ def update_item(item_id: int, item: ItemCreate):
     db_item.description = item.description
     db.commit()
     db.refresh(db_item)
-
-    with neo4j_driver.session() as session:
-        session.run("MATCH (a:Item {name: $name}) SET a.description = $description", 
-                    name=item.name, description=item.description)
     return db_item
 
-@app.delete("/items/{item_id}")
-def delete_item(item_id: int):
+@app.delete("/postgres/items/{item_id}")
+def delete_postgres_item(item_id: int):
     db = SessionLocal()
     db_item = db.query(Item).filter(Item.id == item_id).first()
     if db_item is None:
@@ -92,16 +84,43 @@ def delete_item(item_id: int):
 
     db.delete(db_item)
     db.commit()
-
-    with neo4j_driver.session() as session:
-        session.run("MATCH (a:Item {name: $name}) DELETE a", name=db_item.name)
     return {"ok": True}
 
+# Neo4j CRUD operations
+@app.post("/neo4j/items/")
+def create_neo4j_item(item: ItemCreate):
+    with neo4j_driver.session() as session:
+        session.run("CREATE (a:Item {name: $name, description: $description})", 
+                    name=item.name, description=item.description)
+    return {"ok": True}
 
+@app.get("/neo4j/items/{name}")
+def read_neo4j_item(name: str):
+    with neo4j_driver.session() as session:
+        result = session.run("MATCH (a:Item {name: $name}) RETURN a", name=name)
+        record = result.single()
+        if record is None:
+            raise HTTPException(status_code=404, detail="Item not found")
+        return {"name": record["a"]["name"], "description": record["a"]["description"]}
 
+@app.put("/neo4j/items/{name}")
+def update_neo4j_item(name: str, item: ItemCreate):
+    with neo4j_driver.session() as session:
+        result = session.run("""
+            MATCH (a:Item {name: $name})
+            SET a.name = $new_name, a.description = $description
+            RETURN a
+        """, name=name, new_name=item.name, description=item.description)
+        record = result.single()
+        if record is None:
+            raise HTTPException(status_code=404, detail="Item not found")
+        return {"name": record["a"]["name"], "description": record["a"]["description"]}
 
-
-
+@app.delete("/neo4j/items/{name}")
+def delete_neo4j_item(name: str):
+    with neo4j_driver.session() as session:
+        session.run("MATCH (a:Item {name: $name}) DELETE a", name=name)
+    return {"ok": True}
 
 # Ollama Integration
 class OllamaRequest(BaseModel):
